@@ -63,3 +63,16 @@
   run (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5539:39)
   retryNode (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
   renderNodeDestructive (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5849:11)
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+λ  WARN  props.pointerEvents is deprecated. Use style.pointerEvents 
+  console.warn (D:\Good-Projects\Kinetic app\kinetic\node_modules\expo\node_modules\@expo\cli\src\start\server\serverLogLikeMetro.ts:161:21)
+  warnOnce (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-native-web\dist\modules\warnOnce\index.js:24:13)
+  createDOMProps (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-native-web\dist\modules\createDOMProps\index.js:805:13)
+  createElement (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-native-web\dist\exports\createElement\index.js:23:32)
+  Component (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-native-web\dist\exports\View\index.js:111:23)
+  Object.callComponentInDEV [as react-stack-bottom-frame] (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:8970:18)
+  renderWithHooks (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:4699:19)
+  run (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5539:39)
+  retryNode (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5899:31)
+  renderNodeDestructive (D:\Good-Projects\Kinetic app\kinetic\node_modules\react-dom\cjs\react-dom-server-legacy.node.development.js:5849:11)

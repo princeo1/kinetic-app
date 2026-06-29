@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import { useState } from 'react';
 import {
   ImageBackground,
@@ -14,6 +15,11 @@ import {
   type ViewStyle,
   View,
 } from 'react-native';
+import {
+  CountryPicker,
+  type CountryItem,
+  type Style as CountryPickerStyle,
+} from 'react-native-country-codes-picker';
 
 type FieldName = 'fullName' | 'age' | 'gender' | 'country' | 'mobileNumber' | 'password';
 
@@ -23,18 +29,29 @@ const initialFormState: FormState = {
   fullName: '',
   age: '',
   gender: '',
-  country: '',
+  country: 'UNITED STATES',
   mobileNumber: '',
   password: '',
 };
 
-const countryCode = '+1';
+const initialCallingCode = '+1';
 
 export default function RegisterScreen() {
   const [form, setForm] = useState<FormState>(initialFormState);
+  const [callingCode, setCallingCode] = useState(initialCallingCode);
+  const [isCountryPickerVisible, setCountryPickerVisible] = useState(false);
+  const [isPasswordVisible, setPasswordVisible] = useState(false);
 
   const updateField = (field: FieldName, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleCountrySelect = (country: CountryItem) => {
+    const countryName = country.name.en ?? '';
+
+    setCallingCode(country.dial_code);
+    updateField('country', countryName.toUpperCase());
+    setCountryPickerVisible(false);
   };
 
   return (
@@ -91,31 +108,54 @@ export default function RegisterScreen() {
                   keyboardType="number-pad"
                   containerStyle={styles.flexField}
                 />
-                <InputField
-                  label="GENDER"
-                  placeholder="SELECT"
-                  value={form.gender}
-                  onChangeText={(value) => updateField('gender', value)}
-                  autoCapitalize="characters"
-                  containerStyle={styles.flexField}
-                  rightIcon="chevron-down"
-                />
+                <View style={[styles.fieldGroup, styles.flexField]}>
+                  <Text style={styles.label}>GENDER</Text>
+                  <View style={styles.pickerWrap}>
+                    <Picker
+                      selectedValue={form.gender}
+                      onValueChange={(value) => updateField('gender', value)}
+                      dropdownIconColor={colors.primary}
+                      mode="dropdown"
+                      style={styles.picker}
+                      itemStyle={styles.pickerItem}>
+                      <Picker.Item label="SELECT" value="" enabled={false} color={colors.outline} />
+                      <Picker.Item label="Male" value="Male" />
+                      <Picker.Item label="Female" value="Female" />
+                      <Picker.Item label="Other" value="Other" />
+                    </Picker>
+                  </View>
+                </View>
               </View>
 
-              <InputField
-                label="COUNTRY"
-                placeholder="UNITED STATES (+1)"
-                value={form.country}
-                onChangeText={(value) => updateField('country', value)}
-                autoCapitalize="characters"
-                rightIcon="chevron-down"
-              />
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>COUNTRY</Text>
+                <Pressable
+                  onPress={() => setCountryPickerVisible(true)}
+                  style={styles.inputWrap}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select country">
+                  <Text style={[styles.input, styles.countryPickerText, styles.inputWithIcon]}>
+                    {form.country} ({callingCode})
+                  </Text>
+                  <Ionicons name="chevron-down" size={22} color={colors.primary} style={styles.inputIcon} />
+                </Pressable>
+                <CountryPicker
+                  show={isCountryPickerVisible}
+                  lang="en"
+                  inputPlaceholder="Search country"
+                  searchMessage="No country found"
+                  initialState={callingCode}
+                  pickerButtonOnPress={handleCountrySelect}
+                  onBackdropPress={() => setCountryPickerVisible(false)}
+                  style={countryPickerStyle}
+                />
+              </View>
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>MOBILE NUMBER</Text>
                 <View style={styles.phoneRow}>
                   <View style={styles.countryCodeBox}>
-                    <Text style={styles.countryCodeText}>{countryCode}</Text>
+                    <Text style={styles.countryCodeText}>{callingCode}</Text>
                   </View>
                   <TextInput
                     value={form.mobileNumber}
@@ -133,8 +173,10 @@ export default function RegisterScreen() {
                 placeholder="••••••••"
                 value={form.password}
                 onChangeText={(value) => updateField('password', value)}
-                secureTextEntry
-                rightIcon="eye-off-outline"
+                secureTextEntry={!isPasswordVisible}
+                rightIcon={isPasswordVisible ? 'eye-outline' : 'eye-off-outline'}
+                onRightIconPress={() => setPasswordVisible((current) => !current)}
+                rightIconAccessibilityLabel={isPasswordVisible ? 'Hide password' : 'Show password'}
               />
 
               <Pressable style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]}>
@@ -173,6 +215,8 @@ type InputFieldProps = {
   keyboardType?: 'default' | 'number-pad' | 'phone-pad';
   rightIcon?: keyof typeof Ionicons.glyphMap;
   secureTextEntry?: boolean;
+  onRightIconPress?: () => void;
+  rightIconAccessibilityLabel?: string;
 };
 
 function InputField({
@@ -185,7 +229,17 @@ function InputField({
   keyboardType = 'default',
   rightIcon,
   secureTextEntry = false,
+  onRightIconPress,
+  rightIconAccessibilityLabel,
 }: InputFieldProps) {
+  const icon = rightIcon ? (
+    <Ionicons
+      name={rightIcon}
+      size={22}
+      color={rightIcon.includes('eye') ? '#757575' : '#86fea7'}
+    />
+  ) : null;
+
   return (
     <View style={[styles.fieldGroup, containerStyle]}>
       <Text style={styles.label}>{label}</Text>
@@ -200,9 +254,16 @@ function InputField({
           secureTextEntry={secureTextEntry}
           style={[styles.input, rightIcon ? styles.inputWithIcon : null]}
         />
-        {rightIcon ? (
-          <Ionicons name={rightIcon} size={22} color={rightIcon === 'eye-off-outline' ? '#757575' : '#86fea7'} style={styles.inputIcon} />
+        {rightIcon && onRightIconPress ? (
+          <Pressable
+            onPress={onRightIconPress}
+            style={styles.inputIconButton}
+            accessibilityRole="button"
+            accessibilityLabel={rightIconAccessibilityLabel}>
+            {icon}
+          </Pressable>
         ) : null}
+        {rightIcon && !onRightIconPress ? <View style={styles.inputIcon}>{icon}</View> : null}
       </View>
     </View>
   );
@@ -218,6 +279,36 @@ const colors = {
   onSurface: '#ffffff',
   muted: '#ababab',
   outline: '#757575',
+};
+
+const countryPickerStyle: CountryPickerStyle = {
+  modal: {
+    backgroundColor: colors.background,
+  },
+  textInput: {
+    height: 52,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceHighest,
+    color: colors.onSurface,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  countryButtonStyles: {
+    backgroundColor: colors.surfaceHighest,
+    borderRadius: 4,
+  },
+  dialCode: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  countryName: {
+    color: colors.onSurface,
+    fontWeight: '700',
+  },
+  searchMessageText: {
+    color: colors.muted,
+  },
 };
 
 const styles = StyleSheet.create({
@@ -353,6 +444,38 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 16,
     top: 17,
+  },
+  inputIconButton: {
+    position: 'absolute',
+    right: 4,
+    top: 4,
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerWrap: {
+    height: 56,
+    backgroundColor: colors.surfaceHighest,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 56,
+    color: colors.onSurface,
+    backgroundColor: colors.surfaceHighest,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  pickerItem: {
+    color: colors.onSurface,
+    backgroundColor: colors.surfaceHighest,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  countryPickerText: {
+    lineHeight: 56,
+    textTransform: 'uppercase',
   },
   twoColumnRow: {
     flexDirection: 'row',
