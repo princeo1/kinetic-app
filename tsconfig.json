@@ -3,9 +3,6 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "react-native-country-codes-picker": [
-        "./types/react-native-country-codes-picker"
-      ],
       "@/*": [
         "./*"
       ]

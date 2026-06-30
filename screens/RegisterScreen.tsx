@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
+  FlatList,
   ImageBackground,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -15,15 +16,54 @@ import {
   type ViewStyle,
   View,
 } from 'react-native';
-import {
-  CountryPicker,
-  type CountryItem,
-  type Style as CountryPickerStyle,
-} from 'react-native-country-codes-picker';
+import worldCountries, { type Country } from 'world-countries';
 
 type FieldName = 'fullName' | 'age' | 'gender' | 'country' | 'mobileNumber' | 'password';
 
 type FormState = Record<FieldName, string>;
+
+type SelectionOption = {
+  key: string;
+  label: string;
+  detail?: string;
+};
+
+type CountryOption = SelectionOption & {
+  callingCode: string;
+};
+
+const genderOptions: SelectionOption[] = [
+  { key: 'Male', label: 'Male' },
+  { key: 'Female', label: 'Female' },
+  { key: 'Other', label: 'Other' },
+];
+
+const getCallingCode = (country: Country) => {
+  const { root, suffixes } = country.idd;
+
+  if (!root) {
+    return '';
+  }
+
+  if (root === '+1' || root === '+7') {
+    return root;
+  }
+
+  return `${root}${suffixes[0] ?? ''}`;
+};
+
+const countryOptions: CountryOption[] = worldCountries
+  .map((country) => {
+    const callingCode = getCallingCode(country);
+
+    return {
+      key: country.cca2,
+      label: country.name.common,
+      detail: callingCode,
+      callingCode,
+    };
+  })
+  .sort((first, second) => first.label.localeCompare(second.label));
 
 const initialFormState: FormState = {
   fullName: '',
@@ -38,7 +78,9 @@ const initialCallingCode = '+1';
 
 export default function RegisterScreen() {
   const [form, setForm] = useState<FormState>(initialFormState);
+  const [selectedCountryCode, setSelectedCountryCode] = useState('US');
   const [callingCode, setCallingCode] = useState(initialCallingCode);
+  const [isGenderPickerVisible, setGenderPickerVisible] = useState(false);
   const [isCountryPickerVisible, setCountryPickerVisible] = useState(false);
   const [isPasswordVisible, setPasswordVisible] = useState(false);
 
@@ -46,11 +88,10 @@ export default function RegisterScreen() {
     setForm((current) => ({ ...current, [field]: value }));
   };
 
-  const handleCountrySelect = (country: CountryItem) => {
-    const countryName = country.name.en ?? '';
-
-    setCallingCode(country.dial_code);
-    updateField('country', countryName.toUpperCase());
+  const handleCountrySelect = (country: CountryOption) => {
+    setSelectedCountryCode(country.key);
+    setCallingCode(country.callingCode);
+    updateField('country', country.label.toUpperCase());
     setCountryPickerVisible(false);
   };
 
@@ -110,20 +151,16 @@ export default function RegisterScreen() {
                 />
                 <View style={[styles.fieldGroup, styles.flexField]}>
                   <Text style={styles.label}>GENDER</Text>
-                  <View style={styles.pickerWrap}>
-                    <Picker
-                      selectedValue={form.gender}
-                      onValueChange={(value) => updateField('gender', value)}
-                      dropdownIconColor={colors.primary}
-                      mode="dropdown"
-                      style={styles.picker}
-                      itemStyle={styles.pickerItem}>
-                      <Picker.Item label="SELECT" value="" enabled={false} color={colors.outline} />
-                      <Picker.Item label="Male" value="Male" />
-                      <Picker.Item label="Female" value="Female" />
-                      <Picker.Item label="Other" value="Other" />
-                    </Picker>
-                  </View>
+                  <Pressable
+                    onPress={() => setGenderPickerVisible(true)}
+                    style={styles.selectionField}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select gender">
+                    <Text style={[styles.selectionFieldText, !form.gender && styles.placeholderText]}>
+                      {form.gender || 'SELECT'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={22} color={colors.primary} />
+                  </Pressable>
                 </View>
               </View>
 
@@ -139,16 +176,6 @@ export default function RegisterScreen() {
                   </Text>
                   <Ionicons name="chevron-down" size={22} color={colors.primary} style={styles.inputIcon} />
                 </Pressable>
-                <CountryPicker
-                  show={isCountryPickerVisible}
-                  lang="en"
-                  inputPlaceholder="Search country"
-                  searchMessage="No country found"
-                  initialState={callingCode}
-                  pickerButtonOnPress={handleCountrySelect}
-                  onBackdropPress={() => setCountryPickerVisible(false)}
-                  style={countryPickerStyle}
-                />
               </View>
 
               <View style={styles.fieldGroup}>
@@ -200,8 +227,149 @@ export default function RegisterScreen() {
             </View>
           </View>
         </ScrollView>
+
+        <SelectionModal
+          visible={isGenderPickerVisible}
+          title="SELECT GENDER"
+          options={genderOptions}
+          selectedKey={form.gender}
+          onClose={() => setGenderPickerVisible(false)}
+          onSelect={(option) => {
+            updateField('gender', option.key);
+            setGenderPickerVisible(false);
+          }}
+        />
+
+        <SelectionModal
+          visible={isCountryPickerVisible}
+          title="SELECT COUNTRY"
+          options={countryOptions}
+          selectedKey={selectedCountryCode}
+          searchable
+          searchPlaceholder="Search country"
+          onClose={() => setCountryPickerVisible(false)}
+          onSelect={(option) => handleCountrySelect(option as CountryOption)}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+type SelectionModalProps = {
+  visible: boolean;
+  title: string;
+  options: SelectionOption[];
+  selectedKey: string;
+  searchable?: boolean;
+  searchPlaceholder?: string;
+  onSelect: (option: SelectionOption) => void;
+  onClose: () => void;
+};
+
+function SelectionModal({
+  visible,
+  title,
+  options,
+  selectedKey,
+  searchable = false,
+  searchPlaceholder = 'Search',
+  onSelect,
+  onClose,
+}: SelectionModalProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+
+    if (!normalizedQuery) {
+      return options;
+    }
+
+    return options.filter(
+      (option) =>
+        option.label.toLocaleLowerCase().includes(normalizedQuery) ||
+        option.detail?.toLocaleLowerCase().includes(normalizedQuery)
+    );
+  }, [options, searchQuery]);
+
+  const closeModal = () => {
+    setSearchQuery('');
+    onClose();
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={closeModal}>
+      <View style={styles.modalOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={closeModal}
+          accessibilityRole="button"
+          accessibilityLabel={`Close ${title.toLocaleLowerCase()}`}
+        />
+
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{title}</Text>
+            <Pressable
+              onPress={closeModal}
+              style={styles.modalCloseButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close">
+              <Ionicons name="close" size={24} color={colors.onSurface} />
+            </Pressable>
+          </View>
+
+          {searchable ? (
+            <View style={styles.searchWrap}>
+              <Ionicons name="search" size={20} color={colors.outline} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={searchPlaceholder}
+                placeholderTextColor={colors.outline}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={styles.searchInput}
+              />
+            </View>
+          ) : null}
+
+          <FlatList
+            data={filteredOptions}
+            keyExtractor={(option) => option.key}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.optionsList}
+            ListEmptyComponent={<Text style={styles.emptyText}>NO COUNTRY FOUND</Text>}
+            renderItem={({ item }) => {
+              const isSelected = item.key === selectedKey;
+
+              return (
+                <Pressable
+                  onPress={() => onSelect(item)}
+                  style={({ pressed }) => [
+                    styles.optionRow,
+                    isSelected && styles.selectedOptionRow,
+                    pressed && styles.optionRowPressed,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}>
+                  <Text style={styles.optionLabel}>{item.label}</Text>
+                  <View style={styles.optionTrailing}>
+                    {item.detail ? <Text style={styles.optionDetail}>{item.detail}</Text> : null}
+                    {isSelected ? <Ionicons name="checkmark" size={21} color={colors.primary} /> : null}
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -279,36 +447,6 @@ const colors = {
   onSurface: '#ffffff',
   muted: '#ababab',
   outline: '#757575',
-};
-
-const countryPickerStyle: CountryPickerStyle = {
-  modal: {
-    backgroundColor: colors.background,
-  },
-  textInput: {
-    height: 52,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceHighest,
-    color: colors.onSurface,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  countryButtonStyles: {
-    backgroundColor: colors.surfaceHighest,
-    borderRadius: 4,
-  },
-  dialCode: {
-    color: colors.primary,
-    fontWeight: '800',
-  },
-  countryName: {
-    color: colors.onSurface,
-    fontWeight: '700',
-  },
-  searchMessageText: {
-    color: colors.muted,
-  },
 };
 
 const styles = StyleSheet.create({
@@ -454,24 +592,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pickerWrap: {
+  selectionField: {
     height: 56,
     backgroundColor: colors.surfaceHighest,
-    justifyContent: 'center',
-    overflow: 'hidden',
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  picker: {
-    height: 56,
+  selectionFieldText: {
+    flex: 1,
     color: colors.onSurface,
-    backgroundColor: colors.surfaceHighest,
     fontSize: 18,
     fontWeight: '700',
   },
-  pickerItem: {
-    color: colors.onSurface,
-    backgroundColor: colors.surfaceHighest,
-    fontSize: 18,
-    fontWeight: '700',
+  placeholderText: {
+    color: colors.outline,
   },
   countryPickerText: {
     lineHeight: 56,
@@ -585,5 +721,102 @@ const styles = StyleSheet.create({
   },
   footerLineShort: {
     width: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.68)',
+  },
+  modalSheet: {
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '72%',
+    minHeight: 220,
+    backgroundColor: colors.background,
+    borderTopWidth: 3,
+    borderTopColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  modalHeader: {
+    height: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    color: colors.onSurface,
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 1.8,
+  },
+  modalCloseButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchWrap: {
+    height: 52,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surfaceHighest,
+  },
+  searchInput: {
+    flex: 1,
+    height: 52,
+    color: colors.onSurface,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  optionsList: {
+    paddingBottom: 8,
+  },
+  optionRow: {
+    minHeight: 54,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#3a3a3a',
+  },
+  selectedOptionRow: {
+    backgroundColor: 'rgba(134, 254, 167, 0.08)',
+  },
+  optionRowPressed: {
+    backgroundColor: colors.surfaceHigh,
+  },
+  optionLabel: {
+    flex: 1,
+    paddingRight: 12,
+    color: colors.onSurface,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  optionTrailing: {
+    minWidth: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  optionDetail: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  emptyText: {
+    paddingVertical: 40,
+    color: colors.muted,
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 1.3,
   },
 });
