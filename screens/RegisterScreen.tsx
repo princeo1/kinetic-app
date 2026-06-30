@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
   FlatList,
@@ -17,6 +18,12 @@ import {
   View,
 } from 'react-native';
 import worldCountries, { type Country } from 'world-countries';
+
+import {
+  KINETIC_COLORS,
+  PasswordField,
+  PrimaryButton,
+} from '@/components/AuthControls';
 
 type FieldName = 'fullName' | 'age' | 'gender' | 'country' | 'mobileNumber' | 'password';
 
@@ -77,12 +84,12 @@ const initialFormState: FormState = {
 const initialCallingCode = '+1';
 
 export default function RegisterScreen() {
+  const router = useRouter();
   const [form, setForm] = useState<FormState>(initialFormState);
   const [selectedCountryCode, setSelectedCountryCode] = useState('US');
   const [callingCode, setCallingCode] = useState(initialCallingCode);
   const [isGenderPickerVisible, setGenderPickerVisible] = useState(false);
   const [isCountryPickerVisible, setCountryPickerVisible] = useState(false);
-  const [isPasswordVisible, setPasswordVisible] = useState(false);
 
   const updateField = (field: FieldName, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -195,28 +202,21 @@ export default function RegisterScreen() {
                 </View>
               </View>
 
-              <InputField
-                label="PASSWORD"
-                placeholder="••••••••"
+              <PasswordField
                 value={form.password}
                 onChangeText={(value) => updateField('password', value)}
-                secureTextEntry={!isPasswordVisible}
-                rightIcon={isPasswordVisible ? 'eye-outline' : 'eye-off-outline'}
-                onRightIconPress={() => setPasswordVisible((current) => !current)}
-                rightIconAccessibilityLabel={isPasswordVisible ? 'Hide password' : 'Show password'}
               />
 
-              <Pressable style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]}>
-                <View style={styles.registerFill}>
-                  <View style={styles.registerHighlight} />
-                  <View style={styles.registerShade} />
-                  <Text style={styles.registerText}>REGISTER</Text>
-                </View>
-              </Pressable>
+              <PrimaryButton label="REGISTER" />
 
               <View style={styles.loginRow}>
                 <Text style={styles.memberText}>ALREADY A MEMBER?</Text>
-                <Text style={styles.loginText}>LOGIN HERE</Text>
+                <Pressable
+                  onPress={() => router.push('/login')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open login screen">
+                  <Text style={styles.loginText}>LOGIN HERE</Text>
+                </Pressable>
               </View>
             </View>
 
@@ -381,10 +381,6 @@ type InputFieldProps = {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   containerStyle?: StyleProp<ViewStyle>;
   keyboardType?: 'default' | 'number-pad' | 'phone-pad';
-  rightIcon?: keyof typeof Ionicons.glyphMap;
-  secureTextEntry?: boolean;
-  onRightIconPress?: () => void;
-  rightIconAccessibilityLabel?: string;
 };
 
 function InputField({
@@ -395,19 +391,7 @@ function InputField({
   autoCapitalize = 'none',
   containerStyle,
   keyboardType = 'default',
-  rightIcon,
-  secureTextEntry = false,
-  onRightIconPress,
-  rightIconAccessibilityLabel,
 }: InputFieldProps) {
-  const icon = rightIcon ? (
-    <Ionicons
-      name={rightIcon}
-      size={22}
-      color={rightIcon.includes('eye') ? '#757575' : '#86fea7'}
-    />
-  ) : null;
-
   return (
     <View style={[styles.fieldGroup, containerStyle]}>
       <Text style={styles.label}>{label}</Text>
@@ -419,35 +403,14 @@ function InputField({
           placeholderTextColor="#757575"
           autoCapitalize={autoCapitalize}
           keyboardType={keyboardType}
-          secureTextEntry={secureTextEntry}
-          style={[styles.input, rightIcon ? styles.inputWithIcon : null]}
+          style={styles.input}
         />
-        {rightIcon && onRightIconPress ? (
-          <Pressable
-            onPress={onRightIconPress}
-            style={styles.inputIconButton}
-            accessibilityRole="button"
-            accessibilityLabel={rightIconAccessibilityLabel}>
-            {icon}
-          </Pressable>
-        ) : null}
-        {rightIcon && !onRightIconPress ? <View style={styles.inputIcon}>{icon}</View> : null}
       </View>
     </View>
   );
 }
 
-const colors = {
-  background: '#0e0e0e',
-  surfaceHigh: '#1f1f1f',
-  surfaceHighest: '#262626',
-  borderDark: '#0e0e0e',
-  primary: '#86fea7',
-  primaryDeep: '#50c878',
-  onSurface: '#ffffff',
-  muted: '#ababab',
-  outline: '#757575',
-};
+const colors = KINETIC_COLORS;
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -583,15 +546,6 @@ const styles = StyleSheet.create({
     right: 16,
     top: 17,
   },
-  inputIconButton: {
-    position: 'absolute',
-    right: 4,
-    top: 4,
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   selectionField: {
     height: 56,
     backgroundColor: colors.surfaceHighest,
@@ -639,48 +593,6 @@ const styles = StyleSheet.create({
   },
   phoneInput: {
     flex: 1,
-  },
-  registerButton: {
-    height: 64,
-    marginTop: 4,
-    borderRadius: 4,
-    overflow: 'hidden',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.32,
-    shadowRadius: 18,
-    elevation: 7,
-  },
-  registerFill: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-  },
-  registerHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '58%',
-    height: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
-  },
-  registerShade: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: '62%',
-    height: '100%',
-    backgroundColor: 'rgba(0, 97, 47, 0.2)',
-  },
-  registerText: {
-    color: '#002910',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 3,
-  },
-  pressed: {
-    transform: [{ scale: 0.98 }],
   },
   loginRow: {
     paddingTop: 2,

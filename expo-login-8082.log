@@ -1,0 +1,15 @@
+Starting project at D:\Good-Projects\Kinetic app\kinetic
+React Compiler enabled
+Starting Metro Bundler
+Waiting on http://localhost:8082
+Logs for your project will appear below.
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 78.1% (509/576)
+λ node_modules\expo-router\node\render.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 86.0% (587/633)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (755/758)
+λ node_modules\expo-router\node\render.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (815/869)
+λ Bundled 7241ms node_modules\expo-router\node\render.js (1169 modules)
+Web node_modules\expo-router\entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (1165/1167)
+Web Bundled 12318ms node_modules\expo-router\entry.js (1167 modules)
+Web node_modules\expo-router\entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 2519ms node_modules\expo-router\entry.js (1168 modules)
+ LOG  [web] Logs will appear in the browser console
