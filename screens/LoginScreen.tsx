@@ -90,7 +90,11 @@ export default function LoginScreen() {
               />
 
               <View style={styles.actions}>
-                <PrimaryButton label="LOGIN" icon="arrow-forward" />
+                <PrimaryButton
+                  label="LOGIN"
+                  icon="arrow-forward"
+                  onPress={() => router.push('/dashboard')}
+                />
 
                 <View style={styles.registerRow}>
                   <Text style={styles.newHereText}>NEW HERE?</Text>
