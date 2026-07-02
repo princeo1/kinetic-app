@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   ImageBackground,
   KeyboardAvoidingView,
@@ -14,6 +15,7 @@ import {
   Text,
   TextInput,
   type StyleProp,
+  type TextInputProps,
   type ViewStyle,
   View,
 } from 'react-native';
@@ -24,8 +26,16 @@ import {
   PasswordField,
   PrimaryButton,
 } from '@/components/AuthControls';
+import { supabase } from '@/lib/supabase';
 
-type FieldName = 'fullName' | 'age' | 'gender' | 'country' | 'mobileNumber' | 'password';
+type FieldName =
+  | 'fullName'
+  | 'age'
+  | 'gender'
+  | 'country'
+  | 'mobileNumber'
+  | 'email'
+  | 'password';
 
 type FormState = Record<FieldName, string>;
 
@@ -78,10 +88,40 @@ const initialFormState: FormState = {
   gender: '',
   country: 'UNITED STATES',
   mobileNumber: '',
+  email: '',
   password: '',
 };
 
 const initialCallingCode = '+1';
+
+function getSignupErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  const normalizedMessage = message.toLocaleLowerCase();
+
+  if (normalizedMessage.includes('invalid email')) {
+    return 'Please enter a valid email address.';
+  }
+
+  if (normalizedMessage.includes('password')) {
+    return 'Please choose a stronger password with at least 6 characters.';
+  }
+
+  if (
+    normalizedMessage.includes('rate limit') ||
+    normalizedMessage.includes('too many')
+  ) {
+    return 'Too many signup attempts. Please wait a moment and try again.';
+  }
+
+  if (
+    normalizedMessage.includes('network') ||
+    normalizedMessage.includes('fetch')
+  ) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+
+  return message || 'Unable to create your account. Please try again.';
+}
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -90,6 +130,8 @@ export default function RegisterScreen() {
   const [callingCode, setCallingCode] = useState(initialCallingCode);
   const [isGenderPickerVisible, setGenderPickerVisible] = useState(false);
   const [isCountryPickerVisible, setCountryPickerVisible] = useState(false);
+  const [isSubmitting, setSubmitting] = useState(false);
+  const [signupError, setSignupError] = useState('');
 
   const updateField = (field: FieldName, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -100,6 +142,37 @@ export default function RegisterScreen() {
     setCallingCode(country.callingCode);
     updateField('country', country.label.toUpperCase());
     setCountryPickerVisible(false);
+  };
+
+  const handleRegister = async () => {
+    setSubmitting(true);
+    setSignupError('');
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          data: {
+            full_name: form.fullName.trim(),
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      Alert.alert(
+        'Account Created',
+        'Your account has been created successfully. You can now log in.'
+      );
+      router.replace('/login');
+    } catch (error) {
+      setSignupError(getSignupErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -202,12 +275,36 @@ export default function RegisterScreen() {
                 </View>
               </View>
 
+              <InputField
+                label="EMAIL ADDRESS"
+                placeholder="Email Address"
+                value={form.email}
+                onChangeText={(value) => updateField('email', value)}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+              />
+
               <PasswordField
                 value={form.password}
                 onChangeText={(value) => updateField('password', value)}
               />
 
-              <PrimaryButton label="REGISTER" />
+              <PrimaryButton
+                label="REGISTER"
+                onPress={handleRegister}
+                disabled={isSubmitting}
+                loading={isSubmitting}
+                loadingLabel="CREATING ACCOUNT..."
+              />
+
+              {signupError ? (
+                <Text style={styles.errorMessage} accessibilityRole="alert">
+                  {signupError}
+                </Text>
+              ) : null}
 
               <View style={styles.loginRow}>
                 <Text style={styles.memberText}>ALREADY A MEMBER?</Text>
@@ -379,8 +476,11 @@ type InputFieldProps = {
   value: string;
   onChangeText: (value: string) => void;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoComplete?: TextInputProps['autoComplete'];
+  autoCorrect?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
-  keyboardType?: 'default' | 'number-pad' | 'phone-pad';
+  keyboardType?: TextInputProps['keyboardType'];
+  textContentType?: TextInputProps['textContentType'];
 };
 
 function InputField({
@@ -389,8 +489,11 @@ function InputField({
   value,
   onChangeText,
   autoCapitalize = 'none',
+  autoComplete,
+  autoCorrect,
   containerStyle,
   keyboardType = 'default',
+  textContentType,
 }: InputFieldProps) {
   return (
     <View style={[styles.fieldGroup, containerStyle]}>
@@ -402,7 +505,10 @@ function InputField({
           placeholder={placeholder}
           placeholderTextColor="#757575"
           autoCapitalize={autoCapitalize}
+          autoComplete={autoComplete}
+          autoCorrect={autoCorrect}
           keyboardType={keyboardType}
+          textContentType={textContentType}
           style={styles.input}
         />
       </View>
@@ -593,6 +699,14 @@ const styles = StyleSheet.create({
   },
   phoneInput: {
     flex: 1,
+  },
+  errorMessage: {
+    marginTop: -8,
+    color: '#ff716c',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   loginRow: {
     paddingTop: 2,

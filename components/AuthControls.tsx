@@ -1,6 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 export const KINETIC_COLORS = {
   background: '#0e0e0e',
@@ -74,20 +81,39 @@ type PrimaryButtonProps = {
   label: string;
   onPress?: () => void;
   icon?: keyof typeof Ionicons.glyphMap;
+  disabled?: boolean;
+  loading?: boolean;
+  loadingLabel?: string;
 };
 
-export function PrimaryButton({ label, onPress, icon }: PrimaryButtonProps) {
+export function PrimaryButton({
+  label,
+  onPress,
+  icon,
+  disabled = false,
+  loading = false,
+  loadingLabel = 'LOADING...',
+}: PrimaryButtonProps) {
+  const isDisabled = disabled || loading;
+
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-      accessibilityRole="button">
+      disabled={isDisabled}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        isDisabled && styles.primaryButtonDisabled,
+        pressed && !isDisabled && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled, busy: loading }}>
       <View style={styles.primaryFill}>
         <View style={styles.primaryHighlight} />
         <View style={styles.primaryShade} />
         <View style={styles.primaryContent}>
-          <Text style={styles.primaryText}>{label}</Text>
-          {icon ? <Ionicons name={icon} size={22} color="#002910" /> : null}
+          {loading ? <ActivityIndicator size="small" color="#002910" /> : null}
+          <Text style={styles.primaryText}>{loading ? loadingLabel : label}</Text>
+          {icon && !loading ? <Ionicons name={icon} size={22} color="#002910" /> : null}
         </View>
       </View>
     </Pressable>
@@ -156,6 +182,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: KINETIC_COLORS.primary,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.65,
   },
   primaryHighlight: {
     position: 'absolute',
