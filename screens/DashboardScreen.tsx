@@ -1,6 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
@@ -29,6 +32,7 @@ import {
   muscleProgressData,
   workoutMuscleOptions,
 } from '@/constants/dashboard-data';
+import { supabase } from '@/lib/supabase';
 
 const profileImage =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCdRB9NmiIbya5IDJOC1c4tWu-kH0cebkyqMhEXa7HfoMHEa0jQjrnnoiX2sb01I76qncdLj7LXMOzWt2vNgvhG_ySLXzl4gKoLvp3Db0mFYCHio6PsIggKDkA2Zy0OO7nPq0H4tKJdVcEs4tvnlfnjZE3Y4o8wGVHv8TGGDMzzgV0j8PUjhBHQxStR7Y7ocswKf9cHKSY73Vd7Bj_3303xN6fsubp_Q6lPsfx4mtPsPHQ8QS4uR7_R10EUKbHy_vATPyeD7dQvamw';
@@ -41,6 +45,13 @@ const heatColors = [
   'rgba(134, 254, 167, 0.7)',
   colors.primary,
 ];
+const profileMenuItems = [
+  {
+    key: 'logout',
+    label: 'LOGOUT',
+    icon: 'log-out-outline',
+  },
+] as const;
 
 type HeatmapCell = HeatmapDay | null;
 
@@ -62,20 +73,42 @@ function buildHeatmapWeeks(days: HeatmapDay[]) {
 }
 
 export default function DashboardScreen() {
+  const router = useRouter();
   const { width } = useWindowDimensions();
   const [isWorkoutModalVisible, setWorkoutModalVisible] = useState(false);
+  const [isProfileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [isSigningOut, setSigningOut] = useState(false);
   const isWideLayout = width >= 800;
   const contentWidth = Math.min(width, 1024) - 48;
   const statCardWidth = isWideLayout
     ? (contentWidth - 36) / 4
     : (contentWidth - 12) / 2;
 
+  const handleLogout = async () => {
+    setSigningOut(true);
+
+    try {
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        throw error;
+      }
+
+      setProfileMenuVisible(false);
+      router.replace('/login');
+    } catch {
+      Alert.alert('Unable to Log Out', 'Please check your connection and try again.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.meshTop} />
       <View style={styles.meshBottom} />
 
-      <DashboardHeader />
+      <DashboardHeader onProfilePress={() => setProfileMenuVisible(true)} />
 
       <ScrollView
         bounces={false}
@@ -132,11 +165,22 @@ export default function DashboardScreen() {
         visible={isWorkoutModalVisible}
         onClose={() => setWorkoutModalVisible(false)}
       />
+
+      <ProfileMenu
+        visible={isProfileMenuVisible}
+        isSigningOut={isSigningOut}
+        onClose={() => setProfileMenuVisible(false)}
+        onLogout={handleLogout}
+      />
     </SafeAreaView>
   );
 }
 
-function DashboardHeader() {
+type DashboardHeaderProps = {
+  onProfilePress: () => void;
+};
+
+function DashboardHeader({ onProfilePress }: DashboardHeaderProps) {
   return (
     <View style={styles.header}>
       <View style={styles.headerBrand}>
@@ -149,10 +193,74 @@ function DashboardHeader() {
         <Text style={styles.logo}>KINETIC</Text>
       </View>
 
-      <View style={styles.avatarFrame}>
+      <Pressable
+        onPress={onProfilePress}
+        style={styles.avatarFrame}
+        accessibilityRole="button"
+        accessibilityLabel="Open profile menu">
         <Image source={{ uri: profileImage }} style={styles.avatar} />
-      </View>
+      </Pressable>
     </View>
+  );
+}
+
+type ProfileMenuProps = {
+  visible: boolean;
+  isSigningOut: boolean;
+  onClose: () => void;
+  onLogout: () => void;
+};
+
+function ProfileMenu({
+  visible,
+  isSigningOut,
+  onClose,
+  onLogout,
+}: ProfileMenuProps) {
+  const actions = {
+    logout: onLogout,
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}>
+      <View style={styles.profileMenuOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close profile menu"
+        />
+
+        <View style={styles.profileMenu}>
+          {profileMenuItems.map((item) => (
+            <Pressable
+              key={item.key}
+              onPress={actions[item.key]}
+              disabled={isSigningOut}
+              style={({ pressed }) => [
+                styles.profileMenuItem,
+                pressed && styles.profileMenuItemPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isSigningOut, busy: isSigningOut }}>
+              {isSigningOut ? (
+                <ActivityIndicator size="small" color="#ff716c" />
+              ) : (
+                <Ionicons name={item.icon} size={20} color="#ff716c" />
+              )}
+              <Text style={styles.profileMenuItemText}>
+                {isSigningOut ? 'SIGNING OUT...' : item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -522,6 +630,41 @@ const styles = StyleSheet.create({
   avatar: {
     width: '100%',
     height: '100%',
+  },
+  profileMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
+  },
+  profileMenu: {
+    position: 'absolute',
+    top: 70,
+    right: 16,
+    width: 184,
+    padding: 6,
+    backgroundColor: colors.surfaceHigh,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#3a3a3a',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 12,
+  },
+  profileMenuItem: {
+    minHeight: 48,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileMenuItemPressed: {
+    backgroundColor: colors.surfaceHighest,
+  },
+  profileMenuItemText: {
+    color: '#ff716c',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.5,
   },
   scrollContent: {
     paddingHorizontal: 24,

@@ -19,14 +19,72 @@ import {
   PasswordField,
   PrimaryButton,
 } from '@/components/AuthControls';
+import { supabase } from '@/lib/supabase';
 
 const athleteImage =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCFN0N6S6K8fNRnKy5Bo_x3iZ0NfGAW1lS2A5wxqZGImywgRb_Gwy3dHjZZdz8rKs5dGYneJbQicq8z-3BW4yfFrZZrlPPkqz6LZCH54JawPCFHqyZNmTXDyE0CWASld68nGms4KqGa473YLlUZpydIB1G4KvY4KZxRHUkrhQtTwVGHsO5YJPslkEyH0Ky5fu1EbWIy9cxSUk_kstJb0gYsmOHk9UZYe6Z7jpR9dwbxTuI7bYB_22YssVvaBTcynfqFW8hgsA387Fo';
 
+function getLoginErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  const normalizedMessage = message.toLocaleLowerCase();
+
+  if (normalizedMessage.includes('invalid login credentials')) {
+    return 'Incorrect email address or password.';
+  }
+
+  if (normalizedMessage.includes('email not confirmed')) {
+    return 'Please confirm your email address before signing in.';
+  }
+
+  if (normalizedMessage.includes('invalid email')) {
+    return 'Please enter a valid email address.';
+  }
+
+  if (
+    normalizedMessage.includes('rate limit') ||
+    normalizedMessage.includes('too many')
+  ) {
+    return 'Too many login attempts. Please wait a moment and try again.';
+  }
+
+  if (
+    normalizedMessage.includes('network') ||
+    normalizedMessage.includes('fetch')
+  ) {
+    return 'Unable to connect. Check your internet connection and try again.';
+  }
+
+  return message || 'Unable to sign in. Please try again.';
+}
+
 export default function LoginScreen() {
   const router = useRouter();
-  const [mobileNumber, setMobileNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setSubmitting] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
+  const handleLogin = async () => {
+    setSubmitting(true);
+    setLoginError('');
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      router.replace('/dashboard');
+    } catch (error) {
+      setLoginError(getLoginErrorMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -71,14 +129,17 @@ export default function LoginScreen() {
 
             <View style={styles.form}>
               <View style={styles.fieldGroup}>
-                <Text style={styles.label}>MOBILE NUMBER</Text>
+                <Text style={styles.label}>EMAIL ADDRESS</Text>
                 <TextInput
-                  value={mobileNumber}
-                  onChangeText={setMobileNumber}
-                  placeholder="+1 (555) 000-0000"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Email Address"
                   placeholderTextColor={colors.outline}
-                  keyboardType="phone-pad"
-                  autoComplete="tel"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
                   style={styles.input}
                 />
               </View>
@@ -93,13 +154,22 @@ export default function LoginScreen() {
                 <PrimaryButton
                   label="LOGIN"
                   icon="arrow-forward"
-                  onPress={() => router.push('/dashboard')}
+                  onPress={handleLogin}
+                  disabled={isSubmitting}
+                  loading={isSubmitting}
+                  loadingLabel="SIGNING IN..."
                 />
+
+                {loginError ? (
+                  <Text style={styles.errorMessage} accessibilityRole="alert">
+                    {loginError}
+                  </Text>
+                ) : null}
 
                 <View style={styles.registerRow}>
                   <Text style={styles.newHereText}>NEW HERE?</Text>
                   <Pressable
-                    onPress={() => router.replace('/')}
+                    onPress={() => router.push('/register')}
                     accessibilityRole="button"
                     accessibilityLabel="Open register screen">
                     <Text style={styles.registerText}>REGISTER</Text>
@@ -241,6 +311,14 @@ const styles = StyleSheet.create({
   actions: {
     paddingTop: 4,
     gap: 24,
+  },
+  errorMessage: {
+    marginTop: -10,
+    color: '#ff716c',
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   registerRow: {
     minHeight: 32,
