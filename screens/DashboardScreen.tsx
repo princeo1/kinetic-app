@@ -275,7 +275,7 @@ function AnnualEngineLoad() {
         <View style={styles.heatmapHeading}>
           <Text style={styles.sectionEyebrow}>ANNUAL ENGINE LOAD</Text>
           <Text style={styles.heatmapSubheading}>
-            {annualWorkoutCount} WORKOUTS RECORDED THIS YEAR
+            {annualWorkoutCount} WORKOUTS RECORDED THIS YEARa
           </Text>
         </View>
 
