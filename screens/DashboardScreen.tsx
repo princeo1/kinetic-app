@@ -14,6 +14,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -33,6 +34,7 @@ import {
   workoutMuscleOptions,
 } from '@/constants/dashboard-data';
 import { supabase } from '@/lib/supabase';
+import { saveWorkoutForDate } from '@/lib/workouts';
 
 const profileImage =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCdRB9NmiIbya5IDJOC1c4tWu-kH0cebkyqMhEXa7HfoMHEa0jQjrnnoiX2sb01I76qncdLj7LXMOzWt2vNgvhG_ySLXzl4gKoLvp3Db0mFYCHio6PsIggKDkA2Zy0OO7nPq0H4tKJdVcEs4tvnlfnjZE3Y4o8wGVHv8TGGDMzzgV0j8PUjhBHQxStR7Y7ocswKf9cHKSY73Vd7Bj_3303xN6fsubp_Q6lPsfx4mtPsPHQ8QS4uR7_R10EUKbHy_vATPyeD7dQvamw';
@@ -296,38 +298,44 @@ function AnnualEngineLoad() {
           ))}
         </View>
 
-        <ScrollView
-          horizontal
-          bounces={false}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.heatmapScrollContent}>
-          {weeks.map((week, weekIndex) => (
-            <View key={`week-${weekIndex}`} style={styles.heatmapWeek}>
-              {Array.from({ length: 7 }, (_, dayIndex) => {
-                const day = week[dayIndex] ?? null;
+        {weeks.length > 0 ? (
+          <ScrollView
+            horizontal
+            bounces={false}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.heatmapScrollContent}>
+            {weeks.map((week, weekIndex) => (
+              <View key={`week-${weekIndex}`} style={styles.heatmapWeek}>
+                {Array.from({ length: 7 }, (_, dayIndex) => {
+                  const day = week[dayIndex] ?? null;
 
-                return (
-                  <View
-                    key={day?.date ?? `empty-${weekIndex}-${dayIndex}`}
-                    accessibilityLabel={
-                      day ? `${day.date}, load level ${day.intensity}` : 'No date'
-                    }
-                    style={[
-                      styles.heatmapCell,
-                      {
-                        width: cellSize,
-                        height: cellSize,
-                        backgroundColor: day
-                          ? heatColors[day.intensity]
-                          : 'transparent',
-                      },
-                    ]}
-                  />
-                );
-              })}
-            </View>
-          ))}
-        </ScrollView>
+                  return (
+                    <View
+                      key={day?.date ?? `empty-${weekIndex}-${dayIndex}`}
+                      accessibilityLabel={
+                        day ? `${day.date}, load level ${day.intensity}` : 'No date'
+                      }
+                      style={[
+                        styles.heatmapCell,
+                        {
+                          width: cellSize,
+                          height: cellSize,
+                          backgroundColor: day
+                            ? heatColors[day.intensity]
+                            : 'transparent',
+                        },
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+            ))}
+          </ScrollView>
+        ) : (
+          <View style={styles.heatmapEmptyState}>
+            <Text style={styles.emptyStateText}>NO WORKOUT DATA YET</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -387,9 +395,80 @@ type RecordWorkoutModalProps = {
 
 function RecordWorkoutModal({ visible, onClose }: RecordWorkoutModalProps) {
   const [attendance, setAttendance] = useState<'Present' | 'Absent'>('Present');
-  const [selectedMuscle, setSelectedMuscle] = useState(workoutMuscleOptions[0]);
-  const [cardioExercises, setCardioExercises] = useState(0);
-  const [yogaExercises, setYogaExercises] = useState(0);
+  const [selectedMuscles, setSelectedMuscles] = useState<string[]>([
+    workoutMuscleOptions[0],
+  ]);
+  const [weightKg, setWeightKg] = useState('');
+  const [waistInches, setWaistInches] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState('');
+  const [cardioMinutes, setCardioMinutes] = useState(0);
+  const [yogaMinutes, setYogaMinutes] = useState(0);
+  const [isSaving, setSaving] = useState(false);
+
+  const toggleMuscle = (muscle: string) => {
+    setSelectedMuscles((current) =>
+      current.includes(muscle)
+        ? current.filter((item) => item !== muscle)
+        : [...current, muscle]
+    );
+  };
+
+  const handleSave = async () => {
+    const parsedWeight = Number(weightKg);
+    const parsedWaist = Number(waistInches);
+    const parsedDuration = Number(durationMinutes);
+
+    if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) {
+      Alert.alert('Check Weight', "Enter today's weight in kg.");
+      return;
+    }
+
+    if (!Number.isFinite(parsedWaist) || parsedWaist <= 0) {
+      Alert.alert('Check Waist', "Enter today's waist measurement in inches.");
+      return;
+    }
+
+    if (!Number.isInteger(parsedDuration) || parsedDuration < 0) {
+      Alert.alert('Check Duration', 'Enter workout duration in whole minutes.');
+      return;
+    }
+
+    if (selectedMuscles.length === 0 && attendance === 'Present') {
+      Alert.alert('Choose Muscle', 'Select at least one muscle trained.');
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw userError ?? new Error('No active user session.');
+      }
+
+      await saveWorkoutForDate({
+        userId: user.id,
+        workoutDate: getLocalDateKey(),
+        attendance: attendance === 'Present',
+        weightKg: parsedWeight,
+        waistInches: parsedWaist,
+        durationMinutes: parsedDuration,
+        musclesTrained: attendance === 'Present' ? selectedMuscles : [],
+        cardioMinutes,
+        yogaMinutes,
+      });
+
+      onClose();
+    } catch {
+      Alert.alert('Workout Not Saved', 'Please check your connection and try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Modal
@@ -456,16 +535,40 @@ function RecordWorkoutModal({ visible, onClose }: RecordWorkoutModalProps) {
               </View>
             </View>
 
+            <MetricInput
+              label="TODAY'S WEIGHT (KG)"
+              value={weightKg}
+              onChangeText={setWeightKg}
+              placeholder="0"
+              keyboardType="decimal-pad"
+            />
+
+            <MetricInput
+              label="TODAY'S WAIST (INCHES)"
+              value={waistInches}
+              onChangeText={setWaistInches}
+              placeholder="0"
+              keyboardType="decimal-pad"
+            />
+
+            <MetricInput
+              label="WORKOUT DURATION (MINUTES)"
+              value={durationMinutes}
+              onChangeText={setDurationMinutes}
+              placeholder="0"
+              keyboardType="number-pad"
+            />
+
             <View style={styles.modalField}>
               <Text style={styles.modalLabel}>MUSCLE TRAINED</Text>
               <View style={styles.muscleOptions}>
                 {workoutMuscleOptions.map((muscle) => {
-                  const isSelected = selectedMuscle === muscle;
+                  const isSelected = selectedMuscles.includes(muscle);
 
                   return (
                     <Pressable
                       key={muscle}
-                      onPress={() => setSelectedMuscle(muscle)}
+                      onPress={() => toggleMuscle(muscle)}
                       style={[
                         styles.muscleOption,
                         isSelected && styles.muscleOptionSelected,
@@ -486,21 +589,56 @@ function RecordWorkoutModal({ visible, onClose }: RecordWorkoutModalProps) {
             </View>
 
             <NumberStepper
-              label="NUMBER OF CARDIO EXERCISES"
-              value={cardioExercises}
-              onChange={setCardioExercises}
+              label="CARDIO MINUTES"
+              value={cardioMinutes}
+              onChange={setCardioMinutes}
             />
             <NumberStepper
-              label="NUMBER OF YOGA EXERCISES"
-              value={yogaExercises}
-              onChange={setYogaExercises}
+              label="YOGA MINUTES"
+              value={yogaMinutes}
+              onChange={setYogaMinutes}
             />
 
-            <PrimaryButton label="DONE" onPress={onClose} />
+            <PrimaryButton
+              label="DONE"
+              onPress={handleSave}
+              loading={isSaving}
+              loadingLabel="SAVING..."
+            />
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
+  );
+}
+
+type MetricInputProps = {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  keyboardType: 'decimal-pad' | 'number-pad';
+};
+
+function MetricInput({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+}: MetricInputProps) {
+  return (
+    <View style={styles.modalField}>
+      <Text style={styles.modalLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.outline}
+        keyboardType={keyboardType}
+        style={styles.modalInput}
+      />
+    </View>
   );
 }
 
@@ -533,6 +671,15 @@ function NumberStepper({ label, value, onChange }: NumberStepperProps) {
       </View>
     </View>
   );
+}
+
+function getLocalDateKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 function BottomNavigation() {
@@ -803,6 +950,19 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingRight: 4,
   },
+  heatmapEmptyState: {
+    minHeight: 88,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceHighest,
+  },
+  emptyStateText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
   heatmapWeek: {
     gap: 3,
   },
@@ -992,6 +1152,15 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     fontWeight: '800',
     letterSpacing: 1.5,
+  },
+  modalInput: {
+    height: 48,
+    paddingHorizontal: 14,
+    backgroundColor: colors.surfaceHighest,
+    color: colors.onSurface,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
   segmentedControl: {
     height: 48,
