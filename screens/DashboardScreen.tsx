@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,16 +25,20 @@ import {
 } from '@/components/AuthControls';
 import {
   annualLoadData,
-  annualWorkoutCount,
-  dashboardStats,
   dashboardTabs,
+  type DashboardStat,
   type HeatmapDay,
   lastSession,
-  muscleProgressData,
+  type MuscleProgress,
   workoutMuscleOptions,
 } from '@/constants/dashboard-data';
 import { supabase } from '@/lib/supabase';
-import { saveWorkoutForDate } from '@/lib/workouts';
+import {
+  fetchUserWorkouts,
+  saveWorkoutForDate,
+  type WorkoutRow,
+} from '@/lib/workouts';
+import { useAuthSession } from '@/providers/AuthSessionProvider';
 
 const profileImage =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCdRB9NmiIbya5IDJOC1c4tWu-kH0cebkyqMhEXa7HfoMHEa0jQjrnnoiX2sb01I76qncdLj7LXMOzWt2vNgvhG_ySLXzl4gKoLvp3Db0mFYCHio6PsIggKDkA2Zy0OO7nPq0H4tKJdVcEs4tvnlfnjZE3Y4o8wGVHv8TGGDMzzgV0j8PUjhBHQxStR7Y7ocswKf9cHKSY73Vd7Bj_3303xN6fsubp_Q6lPsfx4mtPsPHQ8QS4uR7_R10EUKbHy_vATPyeD7dQvamw';
@@ -57,6 +61,12 @@ const profileMenuItems = [
 
 type HeatmapCell = HeatmapDay | null;
 
+type DashboardAnalytics = {
+  stats: DashboardStat[];
+  muscleProgress: MuscleProgress[];
+  totalWorkoutsThisYear: number;
+};
+
 function buildHeatmapWeeks(days: HeatmapDay[]) {
   if (days.length === 0) {
     return [];
@@ -76,7 +86,9 @@ function buildHeatmapWeeks(days: HeatmapDay[]) {
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { session } = useAuthSession();
   const { width } = useWindowDimensions();
+  const [workouts, setWorkouts] = useState<WorkoutRow[]>([]);
   const [isWorkoutModalVisible, setWorkoutModalVisible] = useState(false);
   const [isProfileMenuVisible, setProfileMenuVisible] = useState(false);
   const [isSigningOut, setSigningOut] = useState(false);
@@ -85,6 +97,32 @@ export default function DashboardScreen() {
   const statCardWidth = isWideLayout
     ? (contentWidth - 36) / 4
     : (contentWidth - 12) / 2;
+
+  const loadWorkouts = useCallback(async () => {
+    if (!session?.user.id) {
+      setWorkouts([]);
+      return;
+    }
+
+    try {
+      const userWorkouts = await fetchUserWorkouts(session.user.id);
+      setWorkouts(userWorkouts);
+    } catch {
+      Alert.alert(
+        'Unable to Load Dashboard',
+        'Please check your connection and try again.'
+      );
+    }
+  }, [session?.user.id]);
+
+  useEffect(() => {
+    loadWorkouts();
+  }, [loadWorkouts]);
+
+  const dashboardAnalytics = useMemo(
+    () => calculateDashboardAnalytics(workouts),
+    [workouts]
+  );
 
   const handleLogout = async () => {
     setSigningOut(true);
@@ -126,7 +164,7 @@ export default function DashboardScreen() {
           </View>
 
           <View style={styles.statsGrid}>
-            {dashboardStats.map((stat) => (
+            {dashboardAnalytics.stats.map((stat) => (
               <View
                 key={stat.label}
                 style={[
@@ -142,11 +180,11 @@ export default function DashboardScreen() {
             ))}
           </View>
 
-          <AnnualEngineLoad />
+          <AnnualEngineLoad totalWorkoutsThisYear={dashboardAnalytics.totalWorkoutsThisYear} />
 
           <View style={[styles.detailColumns, isWideLayout && styles.detailColumnsWide]}>
             <View style={styles.detailColumn}>
-              <MusclesTrained />
+              <MusclesTrained muscleProgress={dashboardAnalytics.muscleProgress} />
             </View>
 
             <View style={styles.detailColumn}>
@@ -166,6 +204,7 @@ export default function DashboardScreen() {
       <RecordWorkoutModal
         visible={isWorkoutModalVisible}
         onClose={() => setWorkoutModalVisible(false)}
+        onSaved={loadWorkouts}
       />
 
       <ProfileMenu
@@ -266,7 +305,11 @@ function ProfileMenu({
   );
 }
 
-function AnnualEngineLoad() {
+type AnnualEngineLoadProps = {
+  totalWorkoutsThisYear: number;
+};
+
+function AnnualEngineLoad({ totalWorkoutsThisYear }: AnnualEngineLoadProps) {
   const { width } = useWindowDimensions();
   const weeks = useMemo(() => buildHeatmapWeeks(annualLoadData), []);
   const cellSize = width < 420 ? 9 : 11;
@@ -277,7 +320,7 @@ function AnnualEngineLoad() {
         <View style={styles.heatmapHeading}>
           <Text style={styles.sectionEyebrow}>ANNUAL ENGINE LOAD</Text>
           <Text style={styles.heatmapSubheading}>
-            {annualWorkoutCount} WORKOUTS RECORDED THIS YEAR
+            {totalWorkoutsThisYear} WORKOUTS RECORDED THIS YEAR
           </Text>
         </View>
 
@@ -341,7 +384,11 @@ function AnnualEngineLoad() {
   );
 }
 
-function MusclesTrained() {
+type MusclesTrainedProps = {
+  muscleProgress: MuscleProgress[];
+};
+
+function MusclesTrained({ muscleProgress }: MusclesTrainedProps) {
   return (
     <View>
       <View style={styles.sectionTitleBlock}>
@@ -350,7 +397,7 @@ function MusclesTrained() {
       </View>
 
       <View style={styles.muscleList}>
-        {muscleProgressData.map((muscle) => (
+        {muscleProgress.map((muscle) => (
           <View key={muscle.name} style={styles.muscleItem}>
             <View style={styles.muscleHeader}>
               <Text style={styles.muscleName}>{muscle.name}</Text>
@@ -391,9 +438,10 @@ function LastSession() {
 type RecordWorkoutModalProps = {
   visible: boolean;
   onClose: () => void;
+  onSaved: () => Promise<void>;
 };
 
-function RecordWorkoutModal({ visible, onClose }: RecordWorkoutModalProps) {
+function RecordWorkoutModal({ visible, onClose, onSaved }: RecordWorkoutModalProps) {
   const [attendance, setAttendance] = useState<'Present' | 'Absent'>('Present');
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([
     workoutMuscleOptions[0],
@@ -462,6 +510,7 @@ function RecordWorkoutModal({ visible, onClose }: RecordWorkoutModalProps) {
         yogaMinutes,
       });
 
+      await onSaved();
       onClose();
     } catch {
       Alert.alert('Workout Not Saved', 'Please check your connection and try again.');
@@ -610,6 +659,163 @@ function RecordWorkoutModal({ visible, onClose }: RecordWorkoutModalProps) {
       </KeyboardAvoidingView>
     </Modal>
   );
+}
+
+function calculateDashboardAnalytics(workouts: WorkoutRow[]): DashboardAnalytics {
+  const sortedWorkouts = [...workouts].sort((first, second) =>
+    first.workout_date.localeCompare(second.workout_date)
+  );
+  const presentWorkouts = sortedWorkouts.filter((workout) => workout.attendance);
+  const consistency = calculateConsistency(sortedWorkouts, presentWorkouts.length);
+  const currentStreak = calculateCurrentStreak(presentWorkouts);
+  const averageDuration = calculateAverageDuration(sortedWorkouts);
+  const averageWeight = calculateAverageWeightLastSevenWorkoutDays(sortedWorkouts);
+  const totalWorkoutsThisYear = calculateTotalWorkoutsThisYear(presentWorkouts);
+  const muscleProgress = calculateMuscleProgress(sortedWorkouts);
+
+  return {
+    stats: [
+      { label: 'CONSISTENCY', value: `${consistency}%`, highlighted: true },
+      { label: 'CURRENT STREAK', value: `${currentStreak} DAYS` },
+      { label: 'AVG TIME', value: `${averageDuration} MIN` },
+      { label: 'AVG WEIGHT LAST WEEK', value: `${averageWeight} KG` },
+      { label: 'TOTAL WORKOUTS', value: String(totalWorkoutsThisYear) },
+    ],
+    muscleProgress,
+    totalWorkoutsThisYear,
+  };
+}
+
+function calculateConsistency(workouts: WorkoutRow[], daysPresent: number) {
+  if (workouts.length === 0) {
+    return 0;
+  }
+
+  const firstWorkoutDate = parseDateKey(workouts[0].workout_date);
+  const today = parseDateKey(getLocalDateKey());
+  const daysSinceFirstWorkout =
+    Math.max(0, differenceInDays(today, firstWorkoutDate)) + 1;
+
+  return Math.round((daysPresent / daysSinceFirstWorkout) * 100);
+}
+
+function calculateCurrentStreak(presentWorkouts: WorkoutRow[]) {
+  if (presentWorkouts.length === 0) {
+    return 0;
+  }
+
+  const presentDates = new Set(
+    presentWorkouts.map((workout) => workout.workout_date)
+  );
+  const today = parseDateKey(getLocalDateKey());
+  const yesterday = addDays(today, -1);
+  let cursor = presentDates.has(formatDateKey(today)) ? today : yesterday;
+
+  if (!presentDates.has(formatDateKey(cursor))) {
+    return 0;
+  }
+
+  let streak = 0;
+
+  while (presentDates.has(formatDateKey(cursor))) {
+    streak += 1;
+    cursor = addDays(cursor, -1);
+  }
+
+  return streak;
+}
+
+function calculateAverageDuration(workouts: WorkoutRow[]) {
+  const durations = workouts
+    .map((workout) => workout.duration_minutes)
+    .filter(isPresentNumber);
+
+  return calculateRoundedAverage(durations);
+}
+
+function calculateAverageWeightLastSevenWorkoutDays(workouts: WorkoutRow[]) {
+  const latestSevenWorkoutDays = [...workouts]
+    .sort((first, second) => second.workout_date.localeCompare(first.workout_date))
+    .slice(0, 7);
+  const weights = latestSevenWorkoutDays
+    .map((workout) => workout.weight_kg)
+    .filter(isPresentNumber);
+
+  return calculateRoundedAverage(weights);
+}
+
+function calculateTotalWorkoutsThisYear(presentWorkouts: WorkoutRow[]) {
+  const currentYear = new Date().getFullYear();
+
+  return presentWorkouts.filter(
+    (workout) => parseDateKey(workout.workout_date).getFullYear() === currentYear
+  ).length;
+}
+
+function calculateMuscleProgress(workouts: WorkoutRow[]) {
+  const sessionCounts = new Map<string, number>();
+
+  workoutMuscleOptions.forEach((muscle) => {
+    sessionCounts.set(muscle.toUpperCase(), 0);
+  });
+
+  workouts.forEach((workout) => {
+    workout.muscles_trained?.forEach((muscle) => {
+      const normalizedMuscle = muscle.toUpperCase();
+      sessionCounts.set(normalizedMuscle, (sessionCounts.get(normalizedMuscle) ?? 0) + 1);
+    });
+  });
+
+  const highestSessionCount = Math.max(0, ...sessionCounts.values());
+
+  return Array.from(sessionCounts.entries()).map(([name, sessions]) => ({
+    name,
+    sessions,
+    progress: highestSessionCount === 0 ? 0 : sessions / highestSessionCount,
+  }));
+}
+
+function calculateRoundedAverage(values: number[]) {
+  if (values.length === 0) {
+    return 0;
+  }
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+
+  return Math.round(total / values.length);
+}
+
+function isPresentNumber(value: number | null): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function parseDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function addDays(date: Date, days: number) {
+  const nextDate = new Date(date);
+  nextDate.setDate(date.getDate() + days);
+
+  return nextDate;
+}
+
+function differenceInDays(laterDate: Date, earlierDate: Date) {
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+
+  return Math.floor(
+    (laterDate.getTime() - earlierDate.getTime()) / millisecondsPerDay
+  );
+}
+
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 type MetricInputProps = {

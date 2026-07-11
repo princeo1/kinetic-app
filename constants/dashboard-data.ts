@@ -15,26 +15,7 @@ export type MuscleProgress = {
   progress: number;
 };
 
-export const dashboardStats: DashboardStat[] = [
-  { label: 'CONSISTENCY', value: '0%', highlighted: true },
-  { label: 'CURRENT STREAK', value: '0 DAYS' },
-  { label: 'AVG TIME', value: '0 MIN' },
-  { label: 'AVG WEIGHT LAST WEEK', value: '0 KG' },
-];
-
 export const annualLoadData: HeatmapDay[] = [];
-
-export const annualWorkoutCount = annualLoadData.filter((day) => day.intensity > 0).length;
-
-export const muscleProgressData: MuscleProgress[] = [
-  { name: 'CHEST', sessions: 0, progress: 0 },
-  { name: 'BACK', sessions: 0, progress: 0 },
-  { name: 'LEGS', sessions: 0, progress: 0 },
-  { name: 'SHOULDERS', sessions: 0, progress: 0 },
-  { name: 'ARMS', sessions: 0, progress: 0 },
-  { name: 'CARDIO', sessions: 0, progress: 0 },
-  { name: 'YOGA', sessions: 0, progress: 0 },
-];
 
 export const workoutMuscleOptions = [
   'Chest',

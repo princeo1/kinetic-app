@@ -12,7 +12,22 @@ export type SaveWorkoutInput = {
   yogaMinutes: number;
 };
 
-type WorkoutRow = {
+export type WorkoutRow = {
+  id: string;
+  user_id: string;
+  workout_date: string;
+  attendance: boolean;
+  weight_kg: number | null;
+  waist_inches: number | null;
+  duration_minutes: number | null;
+  muscles_trained: string[] | null;
+  cardio_minutes: number | null;
+  yoga_minutes: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ExistingWorkoutRow = {
   id: string;
 };
 
@@ -38,7 +53,7 @@ export async function saveWorkoutForDate(input: SaveWorkoutInput) {
     .select('id')
     .eq('user_id', input.userId)
     .eq('workout_date', input.workoutDate)
-    .maybeSingle<WorkoutRow>();
+    .maybeSingle<ExistingWorkoutRow>();
 
   if (lookupError) {
     throw lookupError;
@@ -63,4 +78,21 @@ export async function saveWorkoutForDate(input: SaveWorkoutInput) {
   if (error) {
     throw error;
   }
+}
+
+export async function fetchUserWorkouts(userId: string) {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select(
+      'id, user_id, workout_date, attendance, weight_kg, waist_inches, duration_minutes, muscles_trained, cardio_minutes, yoga_minutes, created_at, updated_at'
+    )
+    .eq('user_id', userId)
+    .order('workout_date', { ascending: true })
+    .returns<WorkoutRow[]>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data ?? [];
 }
