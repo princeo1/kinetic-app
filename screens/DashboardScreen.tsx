@@ -24,10 +24,8 @@ import {
   PrimaryButton,
 } from '@/components/AuthControls';
 import {
-  annualLoadData,
   dashboardTabs,
   type DashboardStat,
-  type HeatmapDay,
   lastSession,
   type MuscleProgress,
   workoutMuscleOptions,
@@ -59,30 +57,22 @@ const profileMenuItems = [
   },
 ] as const;
 
-type HeatmapCell = HeatmapDay | null;
+type CalendarDay = {
+  dateKey: string;
+  dayOfMonth: number;
+  workout: WorkoutRow | null;
+  intensity: 0 | 1 | 2 | 3 | 4;
+  isToday: boolean;
+  isFuture: boolean;
+};
+
+type CalendarCell = CalendarDay | null;
 
 type DashboardAnalytics = {
   stats: DashboardStat[];
   muscleProgress: MuscleProgress[];
   totalWorkoutsThisYear: number;
 };
-
-function buildHeatmapWeeks(days: HeatmapDay[]) {
-  if (days.length === 0) {
-    return [];
-  }
-
-  const firstDay = new Date(`${days[0].date}T00:00:00Z`).getUTCDay();
-  const mondayOffset = (firstDay + 6) % 7;
-  const cells: HeatmapCell[] = [
-    ...Array.from<HeatmapCell>({ length: mondayOffset }).fill(null),
-    ...days,
-  ];
-
-  return Array.from({ length: Math.ceil(cells.length / 7) }, (_, weekIndex) =>
-    cells.slice(weekIndex * 7, weekIndex * 7 + 7)
-  );
-}
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -180,7 +170,10 @@ export default function DashboardScreen() {
             ))}
           </View>
 
-          <AnnualEngineLoad totalWorkoutsThisYear={dashboardAnalytics.totalWorkoutsThisYear} />
+          <AnnualEngineLoad
+            totalWorkoutsThisYear={dashboardAnalytics.totalWorkoutsThisYear}
+            workouts={workouts}
+          />
 
           <View style={[styles.detailColumns, isWideLayout && styles.detailColumnsWide]}>
             <View style={styles.detailColumn}>
@@ -307,21 +300,74 @@ function ProfileMenu({
 
 type AnnualEngineLoadProps = {
   totalWorkoutsThisYear: number;
+  workouts: WorkoutRow[];
 };
 
-function AnnualEngineLoad({ totalWorkoutsThisYear }: AnnualEngineLoadProps) {
+function AnnualEngineLoad({ totalWorkoutsThisYear, workouts }: AnnualEngineLoadProps) {
   const { width } = useWindowDimensions();
-  const weeks = useMemo(() => buildHeatmapWeeks(annualLoadData), []);
-  const cellSize = width < 420 ? 9 : 11;
+  const [visibleMonth, setVisibleMonth] = useState(() => startOfMonth(new Date()));
+  const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
+  const weeks = useMemo(
+    () => buildMonthCalendar(visibleMonth, workouts),
+    [visibleMonth, workouts]
+  );
+  const calendarWidth = Math.min(width - 88, 936);
+  const cellGap = width < 420 ? 5 : 7;
+  const cellSize = Math.max(
+    34,
+    Math.min(width < 420 ? 43 : 56, (calendarWidth - cellGap * 6) / 7)
+  );
+  const calendarGridWidth = cellSize * 7 + cellGap * 6;
+  const canNavigateNext = !isSameMonth(visibleMonth, new Date());
+  const hasWorkoutInVisibleMonth = weeks.some((week) =>
+    week.some((day) => Boolean(day?.workout))
+  );
+
+  const goToPreviousMonth = () => {
+    setVisibleMonth((current) => addMonths(current, -1));
+  };
+
+  const goToNextMonth = () => {
+    if (canNavigateNext) {
+      setVisibleMonth((current) => addMonths(current, 1));
+    }
+  };
 
   return (
     <View style={styles.heatmapSection}>
       <View style={styles.heatmapHeader}>
         <View style={styles.heatmapHeading}>
-          <Text style={styles.sectionEyebrow}>ANNUAL ENGINE LOAD</Text>
+          <Text style={styles.sectionEyebrow}>MONTHLY ENGINE LOAD</Text>
           <Text style={styles.heatmapSubheading}>
             {totalWorkoutsThisYear} WORKOUTS RECORDED THIS YEAR
           </Text>
+        </View>
+
+        <View style={styles.monthControls}>
+          <Pressable
+            onPress={goToPreviousMonth}
+            style={styles.monthButton}
+            accessibilityRole="button"
+            accessibilityLabel="Previous month">
+            <Ionicons name="chevron-back" size={18} color={colors.onSurface} />
+          </Pressable>
+          <Text style={styles.monthLabel}>{formatMonthLabel(visibleMonth)}</Text>
+          <Pressable
+            onPress={goToNextMonth}
+            disabled={!canNavigateNext}
+            style={[
+              styles.monthButton,
+              !canNavigateNext && styles.monthButtonDisabled,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
+            accessibilityState={{ disabled: !canNavigateNext }}>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={canNavigateNext ? colors.onSurface : colors.outline}
+            />
+          </Pressable>
         </View>
 
         <View style={styles.legend}>
@@ -332,54 +378,155 @@ function AnnualEngineLoad({ totalWorkoutsThisYear }: AnnualEngineLoadProps) {
         </View>
       </View>
 
-      <View style={styles.heatmapBody}>
-        <View style={[styles.dayLabels, { gap: 3 }]}>
+      <View style={styles.calendarPanel}>
+        <View
+          style={[
+            styles.weekdayHeader,
+            { width: calendarGridWidth, gap: cellGap },
+          ]}>
           {dayLabels.map((day) => (
-            <Text key={day} style={[styles.dayLabel, { height: cellSize }]}>
+            <Text key={day} style={[styles.weekdayLabel, { width: cellSize }]}>
               {day}
             </Text>
           ))}
         </View>
 
-        {weeks.length > 0 ? (
-          <ScrollView
-            horizontal
-            bounces={false}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.heatmapScrollContent}>
-            {weeks.map((week, weekIndex) => (
-              <View key={`week-${weekIndex}`} style={styles.heatmapWeek}>
-                {Array.from({ length: 7 }, (_, dayIndex) => {
-                  const day = week[dayIndex] ?? null;
-
-                  return (
-                    <View
-                      key={day?.date ?? `empty-${weekIndex}-${dayIndex}`}
-                      accessibilityLabel={
-                        day ? `${day.date}, load level ${day.intensity}` : 'No date'
-                      }
+        <View style={[styles.monthGrid, { width: calendarGridWidth, gap: cellGap }]}>
+          {weeks.map((week, weekIndex) => (
+            <View key={`week-${weekIndex}`} style={[styles.calendarWeek, { gap: cellGap }]}>
+              {week.map((day, dayIndex) =>
+                day ? (
+                  <Pressable
+                    key={day.dateKey}
+                    onPress={() => setSelectedDay(day)}
+                    disabled={day.isFuture}
+                    style={[
+                      styles.heatmapCell,
+                      day.isToday && styles.todayHeatmapCell,
+                      day.isFuture && styles.futureHeatmapCell,
+                      {
+                        width: cellSize,
+                        height: cellSize,
+                        backgroundColor: heatColors[day.intensity],
+                      },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: day.isFuture }}
+                    accessibilityLabel={`${day.dateKey}, load level ${day.intensity}`}
+                  >
+                    <Text
                       style={[
-                        styles.heatmapCell,
-                        {
-                          width: cellSize,
-                          height: cellSize,
-                          backgroundColor: day
-                            ? heatColors[day.intensity]
-                            : 'transparent',
-                        },
-                      ]}
-                    />
-                  );
-                })}
-              </View>
-            ))}
-          </ScrollView>
-        ) : (
-          <View style={styles.heatmapEmptyState}>
-            <Text style={styles.emptyStateText}>NO WORKOUT DATA YET</Text>
-          </View>
-        )}
+                        styles.calendarDayText,
+                        day.intensity > 0 && styles.activeCalendarDayText,
+                      ]}>
+                      {day.dayOfMonth}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View
+                    key={`empty-${weekIndex}-${dayIndex}`}
+                    style={{ width: cellSize, height: cellSize }}
+                  />
+                )
+              )}
+            </View>
+          ))}
+        </View>
+
+        {!hasWorkoutInVisibleMonth ? (
+          <Text style={styles.calendarEmptyHint}>
+            Record your first workout to begin building your consistency.
+          </Text>
+        ) : null}
       </View>
+
+      <WorkoutDayModal
+        day={selectedDay}
+        onClose={() => setSelectedDay(null)}
+      />
+    </View>
+  );
+}
+
+type WorkoutDayModalProps = {
+  day: CalendarDay | null;
+  onClose: () => void;
+};
+
+function WorkoutDayModal({ day, onClose }: WorkoutDayModalProps) {
+  const workout = day?.workout ?? null;
+
+  return (
+    <Modal
+      visible={Boolean(day)}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={onClose}>
+      <View style={styles.dayModalOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close workout details"
+        />
+
+        <View style={styles.dayModalSheet}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalEyebrow}>WORKOUT DETAILS</Text>
+              <Text style={styles.modalTitle}>{day ? formatDisplayDate(day.dateKey) : ''}</Text>
+            </View>
+            <Pressable
+              onPress={onClose}
+              style={styles.modalCloseButton}
+              accessibilityRole="button"
+              accessibilityLabel="Close">
+              <Ionicons name="close" size={25} color={colors.onSurface} />
+            </Pressable>
+          </View>
+
+          {workout ? (
+            <View style={styles.dayDetails}>
+              <WorkoutDetailRow label="ATTENDANCE" value={workout.attendance ? 'Present' : 'Absent'} />
+              <WorkoutDetailRow label="WEIGHT" value={formatNullableMetric(workout.weight_kg, 'KG')} />
+              <WorkoutDetailRow label="WAIST" value={formatNullableMetric(workout.waist_inches, 'IN')} />
+              <WorkoutDetailRow
+                label="DURATION"
+                value={formatNullableMetric(workout.duration_minutes, 'MIN')}
+              />
+              <WorkoutDetailRow
+                label="MUSCLES"
+                value={formatMuscles(workout.muscles_trained)}
+              />
+              <WorkoutDetailRow
+                label="CARDIO"
+                value={formatNullableMetric(workout.cardio_minutes, 'MIN')}
+              />
+              <WorkoutDetailRow
+                label="YOGA"
+                value={formatNullableMetric(workout.yoga_minutes, 'MIN')}
+              />
+            </View>
+          ) : (
+            <Text style={styles.emptyWorkoutText}>No workout recorded.</Text>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+type WorkoutDetailRowProps = {
+  label: string;
+  value: string;
+};
+
+function WorkoutDetailRow({ label, value }: WorkoutDetailRowProps) {
+  return (
+    <View style={styles.dayDetailRow}>
+      <Text style={styles.dayDetailLabel}>{label}</Text>
+      <Text style={styles.dayDetailValue}>{value}</Text>
     </View>
   );
 }
@@ -686,6 +833,69 @@ function calculateDashboardAnalytics(workouts: WorkoutRow[]): DashboardAnalytics
   };
 }
 
+function buildMonthCalendar(month: Date, workouts: WorkoutRow[]) {
+  const workoutsByDate = new Map(
+    workouts.map((workout) => [workout.workout_date, workout])
+  );
+  const monthStart = startOfMonth(month);
+  const daysInMonth = new Date(
+    monthStart.getFullYear(),
+    monthStart.getMonth() + 1,
+    0
+  ).getDate();
+  const mondayOffset = (monthStart.getDay() + 6) % 7;
+  const cells: CalendarCell[] = Array.from<CalendarCell>({
+    length: mondayOffset,
+  }).fill(null);
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = new Date(monthStart.getFullYear(), monthStart.getMonth(), day);
+    const dateKey = formatDateKey(date);
+    const workout = workoutsByDate.get(dateKey) ?? null;
+    const todayKey = getLocalDateKey();
+
+    cells.push({
+      dateKey,
+      dayOfMonth: day,
+      workout,
+      intensity: workout ? calculateWorkoutIntensity(workout) : 0,
+      isToday: dateKey === todayKey,
+      isFuture: dateKey > todayKey,
+    });
+  }
+
+  return Array.from({ length: Math.ceil(cells.length / 7) }, (_, weekIndex) =>
+    cells.slice(weekIndex * 7, weekIndex * 7 + 7)
+  );
+}
+
+function calculateWorkoutIntensity(workout: WorkoutRow): 0 | 1 | 2 | 3 | 4 {
+  if (!workout.attendance) {
+    return 0;
+  }
+
+  const score =
+    1 +
+    (workout.muscles_trained?.length ?? 0) +
+    Math.floor((workout.cardio_minutes ?? 0) / 10) +
+    Math.floor((workout.yoga_minutes ?? 0) / 10) +
+    Math.floor((workout.duration_minutes ?? 0) / 30);
+
+  if (score >= 7) {
+    return 4;
+  }
+
+  if (score >= 5) {
+    return 3;
+  }
+
+  if (score >= 3) {
+    return 2;
+  }
+
+  return 1;
+}
+
 function calculateConsistency(workouts: WorkoutRow[], daysPresent: number) {
   if (workouts.length === 0) {
     return 0;
@@ -795,6 +1005,21 @@ function parseDateKey(dateKey: string) {
   return new Date(year, month - 1, day);
 }
 
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function isSameMonth(firstDate: Date, secondDate: Date) {
+  return (
+    firstDate.getFullYear() === secondDate.getFullYear() &&
+    firstDate.getMonth() === secondDate.getMonth()
+  );
+}
+
 function addDays(date: Date, days: number) {
   const nextDate = new Date(date);
   nextDate.setDate(date.getDate() + days);
@@ -816,6 +1041,39 @@ function formatDateKey(date: Date) {
   const day = String(date.getDate()).padStart(2, '0');
 
   return `${year}-${month}-${day}`;
+}
+
+function formatMonthLabel(date: Date) {
+  return date
+    .toLocaleDateString('en-US', {
+      month: 'long',
+      year: 'numeric',
+    })
+    .toUpperCase();
+}
+
+function formatDisplayDate(dateKey: string) {
+  return parseDateKey(dateKey).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function formatNullableMetric(value: number | null, unit: string) {
+  if (!isPresentNumber(value)) {
+    return '-';
+  }
+
+  return `${value} ${unit}`;
+}
+
+function formatMuscles(muscles: string[] | null) {
+  if (!muscles || muscles.length === 0) {
+    return '-';
+  }
+
+  return muscles.join(', ');
 }
 
 type MetricInputProps = {
@@ -1095,17 +1353,42 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   heatmapSection: {
-    padding: 20,
+    padding: 16,
     backgroundColor: '#131313',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#292929',
   },
   heatmapHeader: {
-    marginBottom: 24,
-    gap: 14,
+    marginBottom: 16,
+    alignItems: 'center',
+    gap: 10,
   },
   heatmapHeading: {
+    alignSelf: 'stretch',
     gap: 5,
+  },
+  monthControls: {
+    height: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  monthButton: {
+    width: 32,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthButtonDisabled: {
+    opacity: 0.45,
+  },
+  monthLabel: {
+    minWidth: 128,
+    color: colors.onSurface,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    textAlign: 'center',
   },
   sectionEyebrow: {
     color: colors.onSurface,
@@ -1136,44 +1419,105 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 1,
   },
-  heatmapBody: {
+  calendarPanel: {
+    gap: 8,
+  },
+  weekdayHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
-  dayLabels: {
-    paddingRight: 8,
-  },
-  dayLabel: {
-    width: 25,
+  weekdayLabel: {
     color: colors.onSurface,
-    fontSize: 7,
-    lineHeight: 9,
+    fontSize: 8,
+    lineHeight: 11,
     fontWeight: '800',
-    textAlignVertical: 'center',
+    letterSpacing: 0.8,
+    textAlign: 'center',
   },
-  heatmapScrollContent: {
+  monthGrid: {
+    alignSelf: 'center',
+  },
+  calendarWeek: {
     flexDirection: 'row',
-    gap: 3,
-    paddingRight: 4,
+    justifyContent: 'flex-start',
   },
-  heatmapEmptyState: {
-    minHeight: 88,
-    flex: 1,
+  heatmapCell: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceHighest,
+    borderRadius: 5,
   },
-  emptyStateText: {
+  todayHeatmapCell: {
+    borderWidth: 1,
+    borderColor: colors.onSurface,
+  },
+  futureHeatmapCell: {
+    opacity: 0.38,
+  },
+  calendarDayText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  activeCalendarDayText: {
+    color: '#02240f',
+  },
+  calendarEmptyHint: {
+    marginTop: 6,
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textAlign: 'center',
+  },
+  dayModalOverlay: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+  },
+  dayModalSheet: {
+    width: '100%',
+    maxWidth: 460,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    backgroundColor: colors.background,
+    borderTopWidth: 3,
+    borderTopColor: colors.primary,
+  },
+  dayDetails: {
+    gap: 14,
+  },
+  dayDetailRow: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 18,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#2d2d2d',
+  },
+  dayDetailLabel: {
     color: colors.muted,
     fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 1.5,
+    letterSpacing: 1.4,
   },
-  heatmapWeek: {
-    gap: 3,
+  dayDetailValue: {
+    flex: 1,
+    color: colors.onSurface,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textAlign: 'right',
   },
-  heatmapCell: {
-    borderRadius: 1,
+  emptyWorkoutText: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '800',
+    letterSpacing: 0.8,
   },
   detailColumns: {
     gap: 38,

@@ -4,18 +4,11 @@ export type DashboardStat = {
   highlighted?: boolean;
 };
 
-export type HeatmapDay = {
-  date: string;
-  intensity: 0 | 1 | 2 | 3 | 4;
-};
-
 export type MuscleProgress = {
   name: string;
   sessions: number;
   progress: number;
 };
-
-export const annualLoadData: HeatmapDay[] = [];
 
 export const workoutMuscleOptions = [
   'Chest',
