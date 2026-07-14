@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "kinetic",
+    "name": "Kinetic",
     "slug": "kinetic",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,6 +12,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.princesoni.kinetic",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -44,6 +45,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "64026fb3-21fa-408b-a54a-3ed036ba94ab"
+      }
     }
   }
 }
