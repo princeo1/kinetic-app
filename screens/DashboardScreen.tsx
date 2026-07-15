@@ -30,6 +30,7 @@ import {
   type MuscleProgress,
   workoutMuscleOptions,
 } from '@/constants/dashboard-data';
+import { deleteCurrentAccount } from '@/lib/account';
 import { supabase } from '@/lib/supabase';
 import {
   fetchUserWorkouts,
@@ -54,6 +55,13 @@ const profileMenuItems = [
     key: 'logout',
     label: 'LOGOUT',
     icon: 'log-out-outline',
+    destructive: false,
+  },
+  {
+    key: 'deleteAccount',
+    label: 'DELETE ACCOUNT',
+    icon: 'trash-outline',
+    destructive: true,
   },
 ] as const;
 
@@ -82,6 +90,7 @@ export default function DashboardScreen() {
   const [isWorkoutModalVisible, setWorkoutModalVisible] = useState(false);
   const [isProfileMenuVisible, setProfileMenuVisible] = useState(false);
   const [isSigningOut, setSigningOut] = useState(false);
+  const [isDeletingAccount, setDeletingAccount] = useState(false);
   const isWideLayout = width >= 800;
   const contentWidth = Math.min(width, 1024) - 48;
   const statCardWidth = isWideLayout
@@ -130,6 +139,79 @@ export default function DashboardScreen() {
       Alert.alert('Unable to Log Out', 'Please check your connection and try again.');
     } finally {
       setSigningOut(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    if (isDeletingAccount || isSigningOut) {
+      return;
+    }
+
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your KINETIC account?\n\nThis action cannot be undone.\n\nDeleting your account will permanently remove:\n\n• Your account\n• Workout history\n• Attendance records\n• Streaks\n• Muscle history\n• Cardio records\n• Yoga records\n• Any other data associated with your account',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: confirmFinalAccountDeletion,
+        },
+      ]
+    );
+  };
+
+  const confirmFinalAccountDeletion = () => {
+    Alert.alert(
+      'Final Confirmation',
+      'This action is permanent and cannot be undone.\n\nAre you absolutely sure you want to delete your account?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Yes, Delete Forever',
+          style: 'destructive',
+          onPress: deleteAccount,
+        },
+      ]
+    );
+  };
+
+  const deleteAccount = async () => {
+    if (isDeletingAccount || isSigningOut) {
+      return;
+    }
+
+    setDeletingAccount(true);
+
+    try {
+      await deleteCurrentAccount();
+      await supabase.auth.signOut({ scope: 'local' });
+      setProfileMenuVisible(false);
+
+      Alert.alert(
+        'Account Deleted',
+        'Your account has been permanently deleted.',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.replace('/login'),
+          },
+        ],
+        { cancelable: false }
+      );
+    } catch {
+      Alert.alert(
+        "We couldn't delete your account.",
+        'Please try again.'
+      );
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -203,8 +285,10 @@ export default function DashboardScreen() {
       <ProfileMenu
         visible={isProfileMenuVisible}
         isSigningOut={isSigningOut}
+        isDeletingAccount={isDeletingAccount}
         onClose={() => setProfileMenuVisible(false)}
         onLogout={handleLogout}
+        onDeleteAccount={handleDeleteAccount}
       />
     </SafeAreaView>
   );
@@ -241,18 +325,24 @@ function DashboardHeader({ onProfilePress }: DashboardHeaderProps) {
 type ProfileMenuProps = {
   visible: boolean;
   isSigningOut: boolean;
+  isDeletingAccount: boolean;
   onClose: () => void;
   onLogout: () => void;
+  onDeleteAccount: () => void;
 };
 
 function ProfileMenu({
   visible,
   isSigningOut,
+  isDeletingAccount,
   onClose,
   onLogout,
+  onDeleteAccount,
 }: ProfileMenuProps) {
+  const isBusy = isSigningOut || isDeletingAccount;
   const actions = {
     logout: onLogout,
+    deleteAccount: onDeleteAccount,
   };
 
   return (
@@ -265,7 +355,8 @@ function ProfileMenu({
       <View style={styles.profileMenuOverlay}>
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={onClose}
+          onPress={isBusy ? undefined : onClose}
+          disabled={isBusy}
           accessibilityRole="button"
           accessibilityLabel="Close profile menu"
         />
@@ -275,20 +366,34 @@ function ProfileMenu({
             <Pressable
               key={item.key}
               onPress={actions[item.key]}
-              disabled={isSigningOut}
+              disabled={isBusy}
               style={({ pressed }) => [
                 styles.profileMenuItem,
                 pressed && styles.profileMenuItemPressed,
               ]}
               accessibilityRole="button"
-              accessibilityState={{ disabled: isSigningOut, busy: isSigningOut }}>
-              {isSigningOut ? (
+              accessibilityState={{ disabled: isBusy, busy: isBusy }}>
+              {isDeletingAccount && item.key === 'deleteAccount' ? (
+                <ActivityIndicator size="small" color="#ff716c" />
+              ) : isSigningOut && item.key === 'logout' ? (
                 <ActivityIndicator size="small" color="#ff716c" />
               ) : (
-                <Ionicons name={item.icon} size={20} color="#ff716c" />
+                <Ionicons
+                  name={item.icon}
+                  size={20}
+                  color="#ff716c"
+                />
               )}
-              <Text style={styles.profileMenuItemText}>
-                {isSigningOut ? 'SIGNING OUT...' : item.label}
+              <Text
+                style={[
+                  styles.profileMenuItemText,
+                  item.destructive && styles.profileMenuItemTextDestructive,
+                ]}>
+                {isDeletingAccount && item.key === 'deleteAccount'
+                  ? 'DELETING...'
+                  : isSigningOut && item.key === 'logout'
+                    ? 'SIGNING OUT...'
+                    : item.label}
               </Text>
             </Pressable>
           ))}
@@ -1276,6 +1381,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.5,
+  },
+  profileMenuItemTextDestructive: {
+    color: '#ff716c',
   },
   scrollContent: {
     paddingHorizontal: 24,
